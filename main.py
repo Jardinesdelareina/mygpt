@@ -42,7 +42,9 @@ while True:
     try:
         message_user = input('Введите сообщение: ')
         if message_user.lower() == 'выход':
-            close_db()
+            cursor.close()
+            conn.close()
+            print('Соединение закрыто')
             break
         update_list_messages(messages, 'user', message_user)
         response = openai.ChatCompletion.create(
@@ -58,4 +60,4 @@ while True:
         )
         conn.commit()
     except:
-        close_db()
+        print('Произошла ошибка')
