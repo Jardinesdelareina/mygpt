@@ -1,13 +1,16 @@
 import openai
 import sqlite3
 import environs
+from aiogram import Bot, types
+from aiogram.utils import executor
+from aiogram.dispatcher import Dispatcher
 
 env = environs.Env()
 env.read_env('.env')
 
 openai.api_key = env('OPENAI_TOKEN')
 
-conn = sqlite3.connect('db.sqlite3.mygpt')
+conn = sqlite3.connect('mygpt.db.sqlite3')
 cursor = conn.cursor()
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS mygpt (
@@ -16,15 +19,11 @@ cursor.execute('''
         message_chatgpt TEXT
     )
 ''')
-print('База данных создана')
+print('[INFO] Create database')
 conn.commit()
 
-
-def close_db():
-    cursor.close()
-    conn.close()
-    print('Соединение с базой данных закрыто')
-
+bot = Bot(env('TELETOKEN'))
+dp = Dispatcher(bot)
 
 messages = [
     {'role': 'system', 'content': 'You are a programmer and your job is to help you learn how to program and help you write code.'},
@@ -38,26 +37,27 @@ def update_list_messages(messages, role, content):
     return messages
 
 
-while True:
+@dp.message_handler()
+async def chat(message: types.Message):
+    update_list_messages(messages, 'user', message.text)
+    response = openai.ChatCompletion.create(
+        model='gpt-3.5-turbo',
+        messages=messages 
+    )
     try:
-        message_user = input('Введите сообщение: ')
-        if message_user.lower() == 'выход':
-            cursor.close()
-            conn.close()
-            print('Соединение закрыто')
-            break
-        update_list_messages(messages, 'user', message_user)
-        response = openai.ChatCompletion.create(
-            model='gpt-3.5-turbo',
-            messages=messages,
-        )
-        message_chatgpt = response['choices'][0]['message']['content']
-        print(f'GPT: {message_chatgpt}')
+        bot_response = response['choices'][0]['message']['content']
+        await message.answer(bot_response)
         cursor.execute('''
             INSERT INTO mygpt (message_user, message_chatgpt) 
             VALUES (?, ?)
-            ''', (message_user, message_chatgpt)
+            ''', (message.text, bot_response)
         )
         conn.commit()
-    except:
-        print('Произошла ошибка')
+    except Exception as ex:
+        cursor.close()
+        conn.close()
+        print('[INFO] Database closed connection')
+        await message.answer(ex)
+
+
+executor.start_polling(dp, skip_updates=True)
